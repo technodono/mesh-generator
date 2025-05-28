@@ -7,6 +7,7 @@ import time
 # Define parameters for plaque and cube creation
 plaque_offset = 0.05          # Distance behind the front of the face to place the plaque
 plaque_thickness = 0.005      # Thickness of the plaque in meters
+scale_factor = 2.25  # e.g., # Scale up the mesh so it isn't mucking tiny
 
 watch_folder = "/Users/donovanlecours/PycharmProjects/mesh-generator"  # <- Change this to your actual watched folder path
 trigger_file = "scan_done.txt"
@@ -62,28 +63,27 @@ rec_mesh.remove_duplicated_vertices()
 rec_mesh.remove_duplicated_triangles()
 rec_mesh.remove_non_manifold_edges()
 
-# Crop the reconstructed mesh to remove messy back using bounding box
-crop_box = o3d.geometry.AxisAlignedBoundingBox(
-    min_bound=[min_bound[0], min_bound[1], min_bound[2]],
-    max_bound=[max_bound[0], max_bound[1], plaque_z]
-)
-cropped_mesh = rec_mesh.crop(crop_box)
+# Get updated bounds from cropped mesh
+cropped_bbox = rec_mesh.get_axis_aligned_bounding_box()
+crop_min = cropped_bbox.min_bound
+crop_max = cropped_bbox.max_bound
 
-# Create a plaque cube with dimensions of the bounding box
-cube_width = max_bound[0] - min_bound[0]
-cube_depth = max_bound[1] - min_bound[1]
+# Create a plaque cube with dimensions of the cropped mesh
+cube_width = crop_max[0] - crop_min[0]
+cube_depth = crop_max[1] - crop_min[1]
 cube_height = plaque_thickness
 
 cube = o3d.geometry.TriangleMesh.create_box(cube_width, cube_depth, cube_height)
 
-# Position cube at plaque_z - thickness
-cube.translate(np.array([min_bound[0], min_bound[1], plaque_z - plaque_thickness]))
+# Position cube right behind the cropped mesh
+cube.translate(np.array([crop_min[0], crop_min[1], crop_min[2] - plaque_thickness]))
 
 # Optional: Color the plaque
 cube.paint_uniform_color([0.3, 0.3, 0.3])
 
-# Combine cropped mesh and plaque (optional, here we only export cropped_mesh)
-combined_mesh = cropped_mesh
+# Combine mesh and plaque
+combined_mesh = rec_mesh
+
 
 # Center mesh to world origin
 center = combined_mesh.get_center()
@@ -94,6 +94,10 @@ combined_mesh.compute_vertex_normals()
 combined_mesh.remove_duplicated_vertices()
 combined_mesh.remove_duplicated_triangles()
 combined_mesh.remove_non_manifold_edges()
+
+###MESH SCALING
+combined_mesh.scale(scale_factor, center=combined_mesh.get_center())
+
 
 # Export
 output_path = os.path.join(watch_folder, "output_with_plaque.obj")
