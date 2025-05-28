@@ -1,5 +1,4 @@
 import sys
-
 import numpy as np
 import open3d as o3d
 import os
@@ -9,23 +8,28 @@ import time
 plaque_offset = 0.05          # Distance behind the front of the face to place the plaque
 plaque_thickness = 0.005      # Thickness of the plaque in meters
 
-watch_folder = "path/to/watched_folder"  #
+watch_folder = "/Users/donovanlecours/PycharmProjects/mesh-generator"  # <- Change this to your actual watched folder path
 trigger_file = "scan_done.txt"
 trigger_path = os.path.join(watch_folder, trigger_file)
-pcd_path = os.path.join(watch_folder, "scan.ply")
+pcd_path = os.path.join(watch_folder, "face.ply")
+done_path = os.path.join(watch_folder, "mesh_done.txt")
 
 print(f"Waiting for '{trigger_file}' in '{watch_folder}'...")
 while not os.path.exists(trigger_path):
     time.sleep(1)  # Wait 1 second between checks
 
 print(f"Detected '{trigger_file}', starting processing...")
-
-# Optional: clean up
 os.remove(trigger_path)
 
 # Read the point cloud from file
-
-pcd = o3d.io.read_point_cloud(watch_folder)
+try:
+    pcd = o3d.io.read_point_cloud(pcd_path)
+    if pcd.is_empty():
+        print("Point cloud is empty. Exiting.")
+        sys.exit()
+except Exception as e:
+    print(f"Error reading point cloud: {e}")
+    sys.exit()
 
 # Get the bounding box for the point cloud to define plaque size
 bbox = pcd.get_axis_aligned_bounding_box()
@@ -78,18 +82,28 @@ cube.translate(np.array([min_bound[0], min_bound[1], plaque_z - plaque_thickness
 # Optional: Color the plaque
 cube.paint_uniform_color([0.3, 0.3, 0.3])
 
-# Combine cropped mesh and plaque
+# Combine cropped mesh and plaque (optional, here we only export cropped_mesh)
 combined_mesh = cropped_mesh
 
-# Final cleanup and export
+# Center mesh to world origin
+center = combined_mesh.get_center()
+combined_mesh.translate(-center)
+
+# Final cleanup
 combined_mesh.compute_vertex_normals()
 combined_mesh.remove_duplicated_vertices()
 combined_mesh.remove_duplicated_triangles()
 combined_mesh.remove_non_manifold_edges()
 
 # Export
-o3d.io.write_triangle_mesh("output_with_plaque.obj", combined_mesh)
-print("Exported watertight face mesh with plaque to OBJ")
+output_path = os.path.join(watch_folder, "output_with_plaque.obj")
+o3d.io.write_triangle_mesh(output_path, combined_mesh)
+print(f"Exported watertight face mesh with plaque to OBJ: '{output_path}'")
 
 # Optional visualization
-o3d.visualization.draw_geometries([filtered_pcd, cropped_mesh])
+#o3d.visualization.draw_geometries([filtered_pcd, combined_mesh])
+
+# Signal completion by writing a trigger file
+with open(done_path, "w") as f:
+    f.write("Mesh processing complete.\n")
+print(f"Wrote completion signal to '{done_path}'")
